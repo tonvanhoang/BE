@@ -101,7 +101,10 @@ router.post('/reply/:commentId', async function(req, res, next) {
 
     comment.repComment.push({
       idAccount: new mongoose.Types.ObjectId(idAccount),
-      text
+      text,
+      date: new Date().toISOString(),
+      likes: 0,
+      isLiked: false
     });
 
     await comment.save();
@@ -113,6 +116,7 @@ router.post('/reply/:commentId', async function(req, res, next) {
 
     res.json(updatedComment);
   } catch (error) {
+    console.error('Error adding reply:', error);
     res.status(500).json({ message: 'Failed to add reply', error });
   }
 });
@@ -191,6 +195,35 @@ router.put('/like-reply/:commentId/:replyId', async function(req, res) {
     res.json(comment);
   } catch (error) {
     res.status(500).json({ message: 'Failed to update reply like status', error });
+  }
+});
+
+// Thêm route mới cho comment reel
+router.post('/addReel', async function(req, res) {
+  try {
+    const { comment, idReel, idAccount, dateComment } = req.body;
+    const _id = new mongoose.Types.ObjectId();
+    
+    const data = await modelsComment.create({
+      _id,
+      comment,
+      idReel,
+      idAccount,
+      dateComment,
+      likes: 0,
+      isLiked: false,
+      repComment: []
+    });
+
+    // Populate idAccount info before sending response
+    const populatedComment = await modelsComment
+      .findById(data._id)
+      .populate('idAccount', 'firstName lastName avatar');
+
+    res.status(201).json(populatedComment);
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    res.status(500).json({ message: 'Failed to add comment', error });
   }
 });
 
