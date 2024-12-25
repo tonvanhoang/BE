@@ -20,7 +20,8 @@ const commentSchema = new Schema({
   idReel: { type: Schema.Types.ObjectId, ref: "reel" },
   idAccount: { type: Schema.Types.ObjectId, ref: "account", required: true },
   idPost: { type: String, ref: "post"},
-  repComment: [replyCommentSchema]
+  repComment: [replyCommentSchema],
+  isDeleted: { type: Boolean, default: false }
 });
 
 function currentDate() {
