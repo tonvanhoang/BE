@@ -34,6 +34,10 @@ const account = new Schema({
   resetPasswordExpires: { type: Date },
   status: { type: String, enum: ["active", "inactive"], default: "active" },
   unlockRequests: [unlockRequestSchema], // Mảng chứa yêu cầu mở khóa
+
+  // Bổ sung cho OTP
+  otp: { type: String }, // Mã OTP
+  otpExpires: { type: Date }, // Thời hạn của OTP
 });
 function currentDate() {
   const date = new Date();
@@ -42,4 +46,18 @@ function currentDate() {
   const day = String(date.getDate()).padStart(2, '0');
   return `${day}-${month}-${year}`;
 }
+// Phương thức: Tạo OTP
+account.methods.generateOtp = async function () {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Tạo OTP 6 chữ số
+  this.otp = otp;
+  this.otpExpires = new Date(Date.now() + 5 * 60 * 1000); // OTP có hiệu lực trong 5 phút
+  await this.save();
+  return otp;
+};
+
+// Phương thức: Xác minh OTP
+account.methods.verifyOtp = function (inputOtp) {
+  const isOtpValid = this.otp === inputOtp && this.otpExpires > Date.now();
+  return isOtpValid;
+}; 
 module.exports = mongoose.models.account || mongoose.model("account", account);
