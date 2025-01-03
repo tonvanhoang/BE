@@ -2,42 +2,14 @@ var express = require('express');
 var router = express.Router();
 const modelsComment = require('../models/comment');
 const mongoose = require('mongoose')
+const modelsReel = require('../models/reel');
 /* GET home page. */
 router.get('/allComment', async function(req, res, next) {
     const data = await modelsComment.find();
     res.json(data)
 });
-// API để trả lời bình luận
-router.post('/repPost/:id', async function(req, res, next) {
-    try {
-        const { id } = req.params; // Lấy ID của bình luận từ tham số URL
-        const { idAccount, text } = req.body; // Lấy userId và nội dung phản hồi từ body request
-        const newReply = {
-            idAccount: idAccount,
-            text: text,
-        };
-        // Tìm và cập nhật bình luận bằng cách thêm repComment vào mảng
-        const updatedComment = await modelsComment.findByIdAndUpdate(
-            id, 
-            { $push: { repComment: newReply } }, // Dùng $push để thêm phản hồi vào mảng repComment
-            { new: true } // Tùy chọn để trả về tài liệu đã được cập nhật
-        );
-        if (updatedComment) {
-            res.status(200).json({ message: 'Phản hồi đã được thêm thành công!', updatedComment });
-        } else {
-            res.status(404).json({ message: 'Không tìm thấy bình luận!' });
-        }
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Lỗi khi thêm phản hồi!', error });
-    }
-});
-//post
-router.get('/commentByPost/:id', async function(req,res,next){
-    const {id} = req.params;
-    const data = await modelsComment.find({'idPost':id})
-    res.json(data)
-})
+
+
 // reel
 router.get('/commentByReel/:id', async function(req, res) {
   try {
@@ -57,28 +29,8 @@ router.get('/commentByReel/:id', async function(req, res) {
     res.status(500).json({ message: 'Failed to fetch comments', error });
   }
 });
-//add post
-router.post('/addpost', async function(req,res,next){
-  try {
-      const {comment,idPost,idAccount} = req.body;
-      const _id = new mongoose.Types.ObjectId()
-      const data = await modelsComment.create({_id,comment,idPost,idAccount})
-      res.status(201).json({ message: 'Thêm thành công', data });
-  } catch (error) {
-      res.status(500).json({ message: 'Không thành công', error });
-  }
-})
-// comment
-router.put('/edit/:id', async function(req,res,next){
-    try {
-        const {id}= req.params
-        const {repComment} = req.body;
-        await modelsComment.findByIdAndUpdate(id,{repComment})
-        res.status(201).json('bình luận thành công')
-    } catch (error) {
-        res.status(500).json('bình luận không thành công',error);
-    }
-})
+
+
 router.delete('/delete/:id', async function(req,res,next){
     try {
     const {id} = req.params;
@@ -109,12 +61,17 @@ router.post('/reply/:commentId', async function(req, res, next) {
 
     await comment.save();
     
-    const updatedComment = await modelsComment
-      .findById(commentId)
-      .populate('idAccount', 'firstName lastName avatar')
-      .populate('repComment.idAccount', 'firstName lastName avatar');
+    const populatedReply = {
+      // populate reply data
+    };
 
-    res.json(updatedComment);
+    // Emit new reply event
+    req.app.get('io').to(`reel:${comment.idReel}`).emit('newReply', {
+      commentId: req.params.commentId,
+      reply: populatedReply
+    });
+
+    res.json(populatedReply);
   } catch (error) {
     console.error('Error adding reply:', error);
     res.status(500).json({ message: 'Failed to add reply', error });
@@ -167,6 +124,13 @@ router.put('/like/:commentId', async function(req, res) {
     comment.likes = comment.isLiked ? comment.likes + 1 : comment.likes - 1;
     await comment.save();
 
+    // Emit like update event
+    req.app.get('io').to(`reel:${comment.idReel}`).emit('commentLikeUpdate', {
+      commentId: comment._id,
+      likes: comment.likes,
+      isLiked: comment.isLiked
+    });
+
     res.json(comment);
   } catch (error) {
     res.status(500).json({ message: 'Failed to update like status', error });
@@ -192,33 +156,39 @@ router.put('/like-reply/:commentId/:replyId', async function(req, res) {
     reply.likes = reply.isLiked ? reply.likes + 1 : reply.likes - 1;
     
     await comment.save();
+
+    // Emit reply like update event
+    req.app.get('io').to(`reel:${comment.idReel}`).emit('replyLikeUpdate', {
+      commentId: req.params.commentId,
+      replyId: req.params.replyId,
+      likes: reply.likes,
+      isLiked: reply.isLiked
+    });
+
     res.json(comment);
   } catch (error) {
     res.status(500).json({ message: 'Failed to update reply like status', error });
   }
 });
 
-// Thêm route mới cho comment reel
+// Trong phần xử lý comment cho reel
 router.post('/addReel', async function(req, res) {
   try {
-    const { comment, idReel, idAccount, dateComment } = req.body;
+    const { comment, idReel, idAccount } = req.body;
     const _id = new mongoose.Types.ObjectId();
-    
-    const data = await modelsComment.create({
-      _id,
-      comment,
-      idReel,
-      idAccount,
-      dateComment,
-      likes: 0,
-      isLiked: false,
-      repComment: []
-    });
+    const data = await modelsComment.create({ _id, comment, idReel, idAccount });
 
-    // Populate idAccount info before sending response
+    // Cập nhật số lượng comment trong Reel
+    await modelsReel.findByIdAndUpdate(idReel, { $inc: { comments: 1 } });
+
+    // Populate thông tin người dùng trước khi emit
     const populatedComment = await modelsComment
       .findById(data._id)
       .populate('idAccount', 'firstName lastName avatar');
+
+    // Emit sự kiện newComment với comment đã được populate
+    const io = req.app.get('io');
+    io.to(`reel:${idReel}`).emit('newComment', populatedComment);
 
     res.status(201).json(populatedComment);
   } catch (error) {

@@ -200,4 +200,80 @@ router.get('/conversations/:userId', async (req, res) => {
   }
 });
 
+// Soft delete message
+router.delete('/delete/:messageId', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { userId } = req.body; // ID của người dùng thực hiện xóa
+
+    // Tìm tin nhắn
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({ message: 'Tin nhắn không tồn tại' });
+    }
+
+    // Kiểm tra xem người dùng có quyền xóa tin nhắn không
+    if (message.senderId.toString() !== userId) {
+      return res.status(403).json({ message: 'Không có quyền xóa tin nhắn này' });
+    }
+
+    // Thực hiện soft delete
+    message.isDeleted = true;
+    await message.save();
+
+    // Emit socket event để thông báo tin nhắn đã bị xóa
+    req.app.get('io').to(message.conversationId.toString()).emit('message_deleted', {
+      messageId: message._id
+    });
+
+    res.json({ message: 'Tin nhắn đã được xóa thành công' });
+  } catch (error) {
+    console.error('Error deleting message:', error);
+    res.status(500).json({ message: 'Lỗi khi xóa tin nhắn', error });
+  }
+});
+
+// Route để trả lời tin nhắn
+router.post('/reply', async (req, res) => {
+  try {
+    const { conversationId, senderId, content, replyToId } = req.body;
+
+    // Kiểm tra tin nhắn gốc có tồn tại
+    const originalMessage = await Message.findById(replyToId);
+    if (!originalMessage) {
+      return res.status(404).json({ message: 'Original message not found' });
+    }
+
+    // Tạo tin nhắn trả lời mới
+    const newMessage = new Message({
+      conversationId,
+      senderId,
+      content,
+      replyTo: replyToId
+    });
+
+    const savedMessage = await newMessage.save();
+
+    // Populate thông tin người gửi và tin nhắn gốc
+    const populatedMessage = await Message.findById(savedMessage._id)
+      .populate('senderId', 'firstName lastName avatar')
+      .populate({
+        path: 'replyTo',
+        populate: {
+          path: 'senderId',
+          select: 'firstName lastName avatar'
+        }
+      });
+
+    // Emit socket event cho tin nhắn mới
+    req.app.get('io').to(conversationId).emit('new_message', populatedMessage);
+
+    res.status(201).json(populatedMessage);
+  } catch (error) {
+    console.error('Error replying to message:', error);
+    res.status(500).json({ message: 'Failed to reply to message', error });
+  }
+});
+
 module.exports = router;

@@ -42,8 +42,11 @@ var app = express();
 var reportRouter = require("./routes/report");
 const server = http.createServer(app);
 
-// Khởi tạo Socket.IO
+// Initialize socket.io
 const io = initSocket(server);
+
+// Initialize message handlers with a Map to store user-socket mappings
+const userSocketMap = new Map();
 
 // Lưu io instance vào app để có thể sử dụng trong routes
 app.set('io', io);

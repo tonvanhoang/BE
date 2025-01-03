@@ -218,6 +218,14 @@ router.post('/like', async (req, res) => {
 
     await reel.save();
 
+    // Emit sự kiện realtime khi có thay đổi like
+    req.app.get('io').emit('reelLikeUpdate', {
+      reelId: reelId,
+      isLiked: isLiked,
+      totalLikes: reel.likes,
+      userId: userId
+    });
+
     res.json({ 
       message: 'Cập nhật like thành công',
       isLiked: isLiked,
@@ -272,10 +280,70 @@ router.get('/reelWithAccountDetails', async (req, res) => {
 });
 
 router.get('/reelsByAccount/:id', async (req, res) => {
-  const reels = await modelsReel.find()
+  try {
+    const { id } = req.params;
+    const reels = await modelsReel.find({ idAccount: id })
+      .populate('idAccount', 'firstName lastName avata')
+      .sort({ createdAt: -1 })
+      .exec();
+    res.json(reels);
+  } catch (error) {
+    console.error('Error fetching reels:', error);
+    res.status(500).json({ message: 'Failed to fetch reels', error });
+  }
+});
+
+// Lấy reels chưa xem
+router.get('/unviewed/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const reels = await modelsReel.find({
+      viewedBy: { $nin: [userId] } // Không chứa userId trong mảng viewedBy
+    })
     .populate('idAccount', 'firstName lastName avata')
-    .exec();
-  res.json(reels);
+    .sort({ dateReel: -1 });
+
+    res.json(reels);
+  } catch (error) {
+    console.error('Error fetching unviewed reels:', error);
+    res.status(500).json({ message: 'Failed to fetch reels', error });
+  }
+});
+
+// API đánh dấu reel đã xem
+router.post('/markAsViewed/:reelId', async (req, res) => {
+  try {
+    const { reelId } = req.params;
+    const { userId } = req.body;
+
+    const reel = await modelsReel.findByIdAndUpdate(
+      reelId,
+      { $addToSet: { viewedBy: userId } }, // Thêm userId vào mảng viewedBy nếu chưa tồn tại
+      { new: true }
+    );
+
+    res.json(reel);
+  } catch (error) {
+    console.error('Error marking reel as viewed:', error);
+    res.status(500).json({ message: 'Failed to mark reel as viewed', error });
+  }
+});
+
+// Lấy reels theo idAccount
+router.get('/reelsByAccount/:idAccount', async function(req, res) {
+  try {
+    const { idAccount } = req.params;
+    
+    const reels = await modelsReel.find({ idAccount })
+      .populate('idAccount', 'firstName lastName avatar')
+      .sort({ createdAt: -1 });
+    
+    res.json(reels);
+  } catch (error) {
+    console.error('Error fetching reels:', error);
+    res.status(500).json({ message: 'Failed to fetch reels', error });
+  }
 });
 
 module.exports = router;

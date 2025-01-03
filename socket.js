@@ -9,92 +9,62 @@ function initSocket(server) {
     }
   });
 
-  // Lưu trữ thông tin user online
-  const onlineUsers = new Map(); // userId -> socketId
-  const socketToUser = new Map(); // socketId -> userId
-
+  // Xử lý kết nối socket
   io.on('connection', (socket) => {
-    console.log('New connection:', socket.id);
+    console.log('A user connected');
 
-    // Xử lý user đăng nhập 
+    // Xử lý user kết nối
     socket.on('user_connected', (userId) => {
-      // Lưu thông tin mapping
-      onlineUsers.set(userId, socket.id);
-      socketToUser.set(socket.id, userId);
+      socket.userId = userId;
+      console.log('User connected:', userId);
+    });
 
-      console.log(`User ${userId} connected with socket ${socket.id}`);
-      
-      // Thông báo danh sách online users
-      io.emit('online_users', Array.from(onlineUsers.keys()));
+    // Join conversation room
+    socket.on('join_conversation', (conversationId) => {
+      socket.join(conversationId);
+      console.log('User joined conversation:', conversationId);
     });
 
     // Xử lý gửi tin nhắn
     socket.on('send_message', (messageData) => {
-      const { senderId, receiverId, content } = messageData;
-      
-      // Tạo message object với timestamp
-      const message = {
-        senderId,
-        receiverId, 
-        content,
-        timestamp: new Date(),
-      };
-
-      // Lấy socket id của người nhận
-      const receiverSocketId = onlineUsers.get(receiverId);
-
-      if (receiverSocketId) {
-        // Gửi tin nhắn đến người nhận nếu online
-        io.to(receiverSocketId).emit('receive_message', message);
-      }
-
-      // Gửi xác nhận về cho người gửi
-      socket.emit('message_sent', message);
+      socket.to(messageData.conversationId).emit('receive_message', messageData);
     });
 
-    // Xử lý typing status
-    socket.on('typing', (data) => {
-      const { senderId, receiverId } = data;
-      const receiverSocketId = onlineUsers.get(receiverId);
-      
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('user_typing', {
-          senderId,
-          isTyping: true
-        });
-      }
+    // Xử lý xóa tin nhắn
+    socket.on('delete_message', (data) => {
+      socket.to(data.conversationId).emit('message_deleted', {
+        messageId: data.messageId
+      });
     });
 
-    socket.on('stop_typing', (data) => {
-      const { senderId, receiverId } = data;
-      const receiverSocketId = onlineUsers.get(receiverId);
-      
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('user_typing', {
-          senderId,
-          isTyping: false
-        });
-      }
+    socket.on('send_reply', async (data) => {
+      const { messageId, replyData } = data;
+      // Broadcast reply to all users in conversation
+      socket.to(data.conversationId).emit('receive_reply', {
+        messageId,
+        replyData
+      });
     });
 
-    // Xử lý ngắt kết nối
     socket.on('disconnect', () => {
-      // Lấy userId từ socketId
-      const userId = socketToUser.get(socket.id);
-      
-      if (userId) {
-        // Xóa mapping khi user offline
-        onlineUsers.delete(userId);
-        socketToUser.delete(socket.id);
-
-        // Thông báo cho các users khác
-        io.emit('online_users', Array.from(onlineUsers.keys()));
-        io.emit('user_disconnected', userId);
-      }
-
-      console.log(`User disconnected: ${socket.id}`);
+      console.log('User disconnected');
     });
 
+    // Handle joining reel room
+    socket.on('joinReel', (reelId) => {
+      socket.join(`reel:${reelId}`);
+      console.log(`User joined reel room: ${reelId}`);
+    });
+
+    // Handle leaving reel room
+    socket.on('leaveReel', (reelId) => {
+      socket.leave(`reel:${reelId}`);
+      console.log(`User left reel room: ${reelId}`);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('User disconnected');
+    });
   });
 
   return io;

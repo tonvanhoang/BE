@@ -22,6 +22,10 @@ const reelSchema = new Schema({
   likedBy: [{
     type: Schema.Types.ObjectId,
     ref: "account"
+  }],
+  viewedBy: [{
+    type: Schema.Types.ObjectId,
+    ref: "account"
   }]
 }, { 
   timestamps: true,
