@@ -6,6 +6,149 @@ const bcrypt = require("bcrypt");
 const mongoose = require("mongoose");
 const multer = require('multer');
 const fs = require('fs')
+const nodemailer = require("nodemailer");
+require("dotenv").config();
+// Cấu hình Nodemailer
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE, // Gmail, Yahoo, Outlook
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+// API: Gửi OTP
+//localhost:4000/account/send-otp
+http: router.post("/send-otp", async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    // Tìm tài khoản theo email
+    const account = await modelsAccount.findOne({ email });
+    if (!account) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tài khoản không tồn tại!" });
+    }
+    // Tạo OTP
+    const otp = await account.generateOtp();
+
+    // Gửi OTP qua email
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Mã OTP của bạn",
+      text: `Mã OTP của bạn là: ${otp}. OTP này có hiệu lực trong 5 phút.`,
+    };
+    await transporter.sendMail(mailOptions);
+
+    res
+      .status(200)
+      .json({ success: true, message: "OTP đã được gửi đến email của bạn!" });
+  } catch (error) {
+    console.error("Lỗi gửi OTP:", error);
+    res.status(500).json({ success: false, message: "Không thể gửi OTP." });
+  }
+});
+
+// API: Xác minh OTP
+router.post("/verify-otp", async (req, res) => {
+  const { email, otp } = req.body;
+
+  try {
+    // Tìm tài khoản theo email
+    const account = await modelsAccount.findOne({ email });
+    if (!account) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tài khoản không tồn tại!" });
+    }
+
+    // Xác minh OTP
+    const isOtpValid = account.verifyOtp(otp);
+    if (!isOtpValid) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP không hợp lệ hoặc đã hết hạn!" });
+    }
+
+    res
+      .status(200)
+      .json({ success: true, message: "OTP xác minh thành công!" });
+  } catch (error) {
+    console.error("Lỗi xác minh OTP:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Không thể xác minh OTP." });
+  }
+});
+// routes/account.js
+
+// Hàm kiểm tra độ mạnh mật khẩu
+function validatePassword(password) {
+  const minLength = 6;
+  const regexSpecialChar = /[!@#$%^&*(),.?":{}|<>]/; // Ký tự đặc biệt
+  const regexUppercase = /[A-Z]/; // Chữ hoa
+  const regexNumber = /[0-9]/; // Số
+
+  if (password.length < minLength) {
+    return "Mật khẩu phải có ít nhất 6 ký tự.";
+  }
+
+  if (!regexSpecialChar.test(password)) {
+    return "Mật khẩu phải chứa ít nhất một ký tự đặc biệt (!@#$%^&*...).";
+  }
+
+  if (!regexUppercase.test(password)) {
+    return "Mật khẩu phải chứa ít nhất một chữ hoa.";
+  }
+
+  if (!regexNumber.test(password)) {
+    return "Mật khẩu phải chứa ít nhất một chữ số.";
+  }
+
+  return null; // Mật khẩu hợp lệ
+}
+
+// API: Xác minh OTP và đổi mật khẩu
+router.post("/reset-password", async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  try {
+    const user = await modelsAccount.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Tài khoản không tồn tại!" });
+    }
+
+    if (user.otp !== otp || user.otpExpires < Date.now()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP không hợp lệ hoặc đã hết hạn!" });
+    }
+
+    // Gọi hàm validatePassword để kiểm tra mật khẩu
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      return res.status(400).json({ success: false, message: passwordError });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.otp = null;
+    user.otpExpires = null;
+    await user.save();
+
+    res
+      .status(200)
+      .json({ success: true, message: "Mật khẩu đã được đổi thành công!" });
+  } catch (error) {
+    console.error("Lỗi khi đổi mật khẩu:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Không thể đổi mật khẩu." });
+  }
+});
 router.get('/allAccount', async function(req, res, next) {
   const data = await modelsAccount.find();
   res.json(data)
