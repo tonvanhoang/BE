@@ -278,4 +278,41 @@ router.get('/reelsByAccount/:id', async (req, res) => {
   res.json(reels);
 });
 
+// Lấy reels chưa xem
+router.get('/unviewed/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const reels = await modelsReel.find({
+      viewedBy: { $nin: [userId] }
+    })
+    .populate('idAccount', 'firstName lastName avata')
+    .sort({ dateReel: -1 });
+
+    res.json(reels);
+  } catch (error) {
+    console.error('Error fetching unviewed reels:', error);
+    res.status(500).json({ message: 'Failed to fetch reels', error });
+  }
+});
+
+// API đánh dấu reel đã xem
+router.post('/markAsViewed/:reelId', async (req, res) => {
+  try {
+    const { reelId } = req.params;
+    const { userId } = req.body;
+
+    const reel = await modelsReel.findByIdAndUpdate(
+      reelId,
+      { $addToSet: { viewedBy: userId } },
+      { new: true }
+    );
+
+    res.json(reel);
+  } catch (error) {
+    console.error('Error marking reel as viewed:', error);
+    res.status(500).json({ message: 'Failed to mark reel as viewed', error });
+  }
+});
+
 module.exports = router;
