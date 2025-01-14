@@ -13,7 +13,7 @@ router.get('/allComment', async function(req, res, next) {
 // API thêm bình luận mới
 router.post('/addpost', async function(req, res, next) {
   try {
-    const { comment, idPost, idAccount } = req.body;
+    const { comment, idPost, idAccount,dateComment } = req.body;
     const _id = new mongoose.Types.ObjectId();
 
     // Tạo bình luận mới trong cơ sở dữ liệu
@@ -22,7 +22,7 @@ router.post('/addpost', async function(req, res, next) {
       comment,
       idPost,
       idAccount,
-      dateComment: new Date().toISOString(),
+      dateComment,
       likes: 0,
       isLiked: false,
       repComment: [],
@@ -42,13 +42,10 @@ router.post('/addpost', async function(req, res, next) {
 router.get('/commentByPost/:id', async function(req, res, next) {
   const { id } = req.params;
   try {
-    // Tìm tất cả các bình luận theo ID bài viết và populate thông tin tài khoản
     const comments = await modelsComment
       .find({ idPost: id })
-    // Phát sự kiện real-time cho tất cả client với danh sách bình luận
     req.app.get('io').emit('commentsByPost', comments);
-
-    res.json(comments);  // Trả về danh sách bình luận cùng với thông tin tài khoản
+    res.json(comments); 
   } catch (error) {
     res.status(500).json({ message: 'Lỗi khi lấy bình luận', error });
   }
@@ -58,7 +55,7 @@ router.get('/commentByPost/:id', async function(req, res, next) {
 router.post('/repPost/:id', async function(req, res, next) {
   try {
     const { id } = req.params;
-    const { idAccount, text } = req.body;
+    const { idAccount, text,date } = req.body;
     
     // Kiểm tra dữ liệu đầu vào
     if (!idAccount || !text) {
@@ -76,7 +73,7 @@ router.post('/repPost/:id', async function(req, res, next) {
       _id: new mongoose.Types.ObjectId(),
       idAccount,
       text,
-      date: new Date().toISOString()
+      date
     };
 
     // Thêm phản hồi vào bình luận gốc

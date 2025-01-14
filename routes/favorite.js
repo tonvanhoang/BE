@@ -44,7 +44,7 @@ router.post('/addPost', async function(req, res) {
         const data = await modelsFavorite.create({ _id, idAccount, idPost, icon });
 
         const likeCount = await modelsFavorite.countDocuments({ idPost });
-        req.app.get('io').emit('favoriteUpdated', { idPost, likeCount });
+        req.app.get('io').emit('favoriteUpdated', { idPost, likeCount, idAccount });
 
         res.status(201).json({ message: 'Thêm thành công', data });
     } catch (error) {
@@ -63,7 +63,7 @@ router.post('/removePost', async function(req, res) {
         }
 
         const likeCount = await modelsFavorite.countDocuments({ idPost });
-        req.app.get('io').emit('favoriteUpdated', { idPost, likeCount });
+        req.app.get('io').emit('favoriteUpdated', { idPost, likeCount, idAccount });
 
         res.json({ message: 'Xóa thành công', result });
     } catch (error) {
