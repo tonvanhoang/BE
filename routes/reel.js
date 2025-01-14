@@ -13,7 +13,6 @@ cloudinary.config({
   api_secret: 'eiHm7HOvpXf-OgQBaigKhHNrbYo' // Thay bằng API secret của bạn
 });
 
-// let gfs;
 // mongoose.connection.once('open', () => {
 //     gfs = new GridFSBucket(mongoose.connection.db, {
 //         bucketName: 'video'
@@ -284,7 +283,10 @@ router.get('/unviewed/:userId', async (req, res) => {
     const { userId } = req.params;
     
     const reels = await modelsReel.find({
-      viewedBy: { $nin: [userId] }
+      $or: [
+        { viewedBy: { $not: { $elemMatch: { userId, viewCount: { $gte: 3 } } } } },
+        { viewedBy: { $exists: false } }
+      ]
     })
     .populate('idAccount', 'firstName lastName avata')
     .sort({ dateReel: -1 });
@@ -302,11 +304,27 @@ router.post('/markAsViewed/:reelId', async (req, res) => {
     const { reelId } = req.params;
     const { userId } = req.body;
 
-    const reel = await modelsReel.findByIdAndUpdate(
-      reelId,
-      { $addToSet: { viewedBy: userId } },
+    const reel = await modelsReel.findOneAndUpdate(
+      { _id: reelId, 'viewedBy.userId': userId },
+      { $inc: { 'viewedBy.$.viewCount': 1 } },
       { new: true }
     );
+
+    if (!reel) {
+      // Nếu chưa có lượt xem nào, thêm mới
+      await modelsReel.findByIdAndUpdate(
+        reelId,
+        { 
+          $push: { 
+            viewedBy: { 
+              userId: userId, 
+              viewCount: 1 
+            } 
+          } 
+        },
+        { new: true }
+      );
+    }
 
     res.json(reel);
   } catch (error) {
