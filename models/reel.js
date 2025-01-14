@@ -24,8 +24,8 @@ const reelSchema = new Schema({
     ref: "account"
   }],
   viewedBy: [{
-    type: Schema.Types.ObjectId,
-    ref: "account"
+    userId: { type: Schema.Types.ObjectId, ref: "account" },
+    viewCount: { type: Number, default: 0 }
   }]
 }, { 
   timestamps: true,
