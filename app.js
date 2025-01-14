@@ -46,8 +46,8 @@ var app = express();
 
 // Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);
-const io = initSocket(server); // Initialize socket
-app.set('io', io); // Set io instance for routes
+const io = initSocket(server);  // Initialize socket
+app.set('io', io);  // Make io available in routes
 
 // Middleware for logging
 app.use((req, res, next) => {

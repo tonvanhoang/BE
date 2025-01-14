@@ -71,7 +71,7 @@ router.post('/reportReel/add', async (req, res) => {
       dateReport,
       request,
       statusReport,
-      type: 'reel' // Thêm trường type để phân biệt
+      type: 'reel'
     });
     
     res.status(201).json(report);

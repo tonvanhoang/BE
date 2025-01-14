@@ -3,8 +3,7 @@ const Schema = mongoose.Schema;
 
 const messageSchema = new Schema({
   conversationId: {
-    type: Schema.Types.ObjectId,
-    ref: "conversation",
+    type: String,
     required: true,
   },
   senderId: {
@@ -14,7 +13,24 @@ const messageSchema = new Schema({
   },
   content: {
     type: String,
-    required: true,
+    default: "",
+  },
+  imageUrl: {
+    type: String,
+    default: null,
+  },
+  videoUrl: {
+    type: String,
+    default: null,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  replyTo: {
+    type: Schema.Types.ObjectId,
+    ref: "message",
+    default: null
   }
 }, {
   timestamps: true

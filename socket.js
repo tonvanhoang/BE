@@ -1,4 +1,5 @@
 const socketIO = require('socket.io');
+const Message = require('./models/message');
 
 function initSocket(server) {
   const io = socketIO(server, {
@@ -12,15 +13,17 @@ function initSocket(server) {
   // Lưu trữ thông tin user online
   const onlineUsers = new Map(); // userId -> socketId
   const socketToUser = new Map(); // socketId -> userId
+  const activeUsers = new Map(); // Lưu trữ socket.id cho mỗi userId
 
   io.on('connection', (socket) => {
-    console.log('New connection:', socket.id);
+    console.log('New client connected:', socket.id);
 
-    // Xử lý user đăng nhập 
+    // Message Sockets
     socket.on('user_connected', (userId) => {
       // Lưu thông tin mapping
       onlineUsers.set(userId, socket.id);
       socketToUser.set(socket.id, userId);
+      activeUsers.set(userId, socket.id);
 
       console.log(`User ${userId} connected with socket ${socket.id}`);
       
@@ -28,28 +31,45 @@ function initSocket(server) {
       io.emit('online_users', Array.from(onlineUsers.keys()));
     });
 
+    socket.on('join_conversation', (conversationId) => {
+      socket.join(conversationId);
+      console.log(`Socket ${socket.id} joined conversation ${conversationId}`);
+    });
+
     // Xử lý gửi tin nhắn
-    socket.on('send_message', (messageData) => {
-      const { senderId, receiverId, content } = messageData;
-      
-      // Tạo message object với timestamp
-      const message = {
-        senderId,
-        receiverId, 
-        content,
-        timestamp: new Date(),
-      };
+    socket.on('send_message', async (messageData) => {
+      try {
+        console.log('Received message:', messageData);
+        
+        // Gửi tin nhắn đến conversation room
+        socket.to(messageData.conversationId).emit('new_message', {
+          ...messageData,
+          isSentByCurrentUser: false
+        });
 
-      // Lấy socket id của người nhận
-      const receiverSocketId = onlineUsers.get(receiverId);
-
-      if (receiverSocketId) {
-        // Gửi tin nhắn đến người nhận nếu online
-        io.to(receiverSocketId).emit('receive_message', message);
+        // Gửi tin nhắn đến người nhận cụ thể nếu online
+        const receiverSocketId = onlineUsers.get(messageData.receiverId);
+        if (receiverSocketId) {
+          io.to(receiverSocketId).emit('receive_message', {
+            ...messageData,
+            timestamp: new Date()
+          });
+        }
+      } catch (error) {
+        console.error('Error handling message:', error);
       }
+    });
 
-      // Gửi xác nhận về cho người gửi
-      socket.emit('message_sent', message);
+    socket.on('send_reply', async (messageData) => {
+      try {
+        console.log('Received reply:', messageData);
+        socket.to(messageData.conversationId).emit('new_message', {
+          ...messageData,
+          isSentByCurrentUser: false
+        });
+      } catch (error) {
+        console.error('Error handling reply:', error);
+      }
     });
 
     // Xử lý typing status
@@ -77,6 +97,61 @@ function initSocket(server) {
       }
     });
 
+    // Reel Sockets
+    socket.on('joinReel', (reelId) => {
+      socket.join(`reel:${reelId}`);
+      console.log(`Socket ${socket.id} joined reel room: ${reelId}`);
+    });
+
+    socket.on('leaveReel', (reelId) => {
+      socket.leave(`reel:${reelId}`);
+      console.log(`Socket ${socket.id} left reel room: ${reelId}`);
+    });
+
+    // Handle new comments
+    socket.on('newComment', (data) => {
+      console.log('New comment received:', data);
+      io.to(`reel:${data.reelId}`).emit('newComment', data.comment);
+    });
+
+    // Handle new replies
+    socket.on('newReply', (data) => {
+      console.log('New reply received:', data);
+      io.to(`reel:${data.reelId}`).emit('newReply', {
+        commentId: data.commentId,
+        reply: data.reply
+      });
+    });
+
+    // Handle comment likes
+    socket.on('commentLikeUpdate', (data) => {
+      io.to(`reel:${data.reelId}`).emit('commentLikeUpdate', {
+        commentId: data.commentId,
+        likes: data.likes,
+        isLiked: data.isLiked
+      });
+    });
+
+    // Handle reply likes
+    socket.on('replyLikeUpdate', (data) => {
+      io.to(`reel:${data.reelId}`).emit('replyLikeUpdate', {
+        commentId: data.commentId,
+        replyId: data.replyId,
+        likes: data.likes,
+        isLiked: data.isLiked
+      });
+    });
+
+    // Handle reel likes
+    socket.on('reelLikeUpdate', (data) => {
+      io.emit('reelLikeUpdate', {
+        reelId: data.reelId,
+        isLiked: data.isLiked,
+        totalLikes: data.totalLikes,
+        userId: data.userId
+      });
+    });
+
     // Xử lý ngắt kết nối
     socket.on('disconnect', () => {
       // Lấy userId từ socketId
@@ -86,6 +161,7 @@ function initSocket(server) {
         // Xóa mapping khi user offline
         onlineUsers.delete(userId);
         socketToUser.delete(socket.id);
+        activeUsers.delete(userId);
 
         // Thông báo cho các users khác
         io.emit('online_users', Array.from(onlineUsers.keys()));
@@ -94,7 +170,6 @@ function initSocket(server) {
 
       console.log(`User disconnected: ${socket.id}`);
     });
-
   });
 
   return io;
