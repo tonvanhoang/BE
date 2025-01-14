@@ -10,6 +10,36 @@ router.get('/allAccount', async function(req, res, next) {
   const data = await modelsAccount.find();
   res.json(data)
 });
+router.get('/suggestions/:userId', async function(req, res, next) {
+  try {
+    const { userId } = req.params;
+    // Find accepted friendships where userId is either the owner or idAccount
+    const friendships = await modelsFriendship.find({
+      $or: [
+        { owner: userId, status: 'accepted' },
+        { idAccount: userId, status: 'accepted' }
+      ]
+    }).populate('owner idAccount', '_id');
+
+    // Extract the IDs of the accepted friends
+    const friendIds = friendships.map(friendship => {
+      return friendship.owner._id.toString() === userId ? friendship.idAccount._id : friendship.owner._id;
+    });
+
+    // Add the user's own ID to the list of IDs to exclude
+    friendIds.push(userId);
+
+    // Find accounts excluding those with accepted friendships and the user's own account
+    const suggestions = await modelsAccount.find({
+      _id: { $nin: friendIds }
+    });
+
+    res.status(200).json(suggestions);
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ message: 'Failed to fetch suggestions', error });
+  }
+});
 router.get('/friendsAccount/:idAccount', async function(req, res, next) {
   try {
       const { idAccount } = req.params;
